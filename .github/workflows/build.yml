@@ -1,0 +1,53 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [central, sensor]
+    container:
+      image: espressif/idf:v5.3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.app }}
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          cd ${{ matrix.app }}
+          idf.py set-target esp32c2
+          idf.py build
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: espalarm-${{ matrix.app }}
+          path: |
+            ${{ matrix.app }}/build/espalarm_${{ matrix.app }}.bin
+            ${{ matrix.app }}/build/bootloader/bootloader.bin
+            ${{ matrix.app }}/build/partition_table/partition-table.bin
+            ${{ matrix.app }}/build/flasher_args.json
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            espalarm-central/*
+            espalarm-sensor/*
